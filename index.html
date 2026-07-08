@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -44,7 +44,10 @@
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 22px; height: 22px; border-radius: 50%;
     background: #2c3e50; color: #fff; font-weight: bold; font-size: 11px; flex-shrink: 0;
+    cursor: pointer; transition: box-shadow 0.15s;
   }
+  .route-num:hover { box-shadow: 0 0 0 2px rgba(44,62,80,0.3); }
+  .route-num.highlighted { box-shadow: 0 0 0 3px rgba(44,62,80,0.7); }
   .route-num.school { background: #e67e22; }
   .route-num.merged { min-width: auto; padding: 0 6px; border-radius: 11px; }
   .route-info { flex: 1; min-width: 0; }
@@ -219,6 +222,7 @@ var WALK_COLOR = "#2ecc71";
 var AMAP_KEY = "8c386ee7a8b95b9b2714fd480a87f28b";
 var routeCache = {};
 var activeSegments = [];
+var highlightedSegIdx = -1;
 
 function haversineDistance(lat1, lng1, lat2, lng2) {
   var R = 6371000;
@@ -298,6 +302,7 @@ function showDay(dayKey) {
   markerLayer.clearLayers();
   routeLayer.clearLayers();
   activeSegments = [];
+  highlightedSegIdx = -1;
 
   var route = routes[dayKey];
   var allMarkers = [];
@@ -521,27 +526,6 @@ function fetchRealRoutes(points, pointLabels, routeColor, dayKey) {
 
         var badge = addSegmentBadge(seg.coords, pointLabels[i], pointLabels[i+1], segColor, seg.type);
 
-        polyline.on("mouseover", (function(pl, b) {
-          return function() {
-            activeSegments.forEach(function(s) {
-              if (s.polyline !== pl) {
-                s.polyline.setStyle({ opacity: 0.12, weight: 1 });
-                if (s.badge) s.badge.setOpacity(0.12);
-              } else {
-                s.polyline.setStyle({ opacity: 1, weight: 7 });
-                s.polyline.bringToFront();
-                if (s.badge) { s.badge.setOpacity(1); s.badge.setZIndexOffset(10000); }
-              }
-            });
-          };
-        })(polyline, badge));
-
-        polyline.on("mouseout", function() {
-          activeSegments.forEach(function(s) {
-            s.polyline.setStyle({ opacity: 0.78, weight: 4 });
-            if (s.badge) { s.badge.setOpacity(1); s.badge.setZIndexOffset(0); }
-          });
-        });
 
         activeSegments.push({ polyline: polyline, badge: badge, type: seg.type });
       } else {
@@ -643,6 +627,38 @@ function updatePanelTimes(dayKey, times) {
   }
 }
 
+function resetAllSegments() {
+  activeSegments.forEach(function(s) {
+    s.polyline.setStyle({ opacity: 0.78, weight: 4 });
+    if (s.badge) { s.badge.setOpacity(1); s.badge.setZIndexOffset(0); }
+  });
+}
+function highlightSegment(segIdx) {
+  if (activeSegments.length === 0) return;
+  if (highlightedSegIdx === segIdx) {
+    resetAllSegments();
+    highlightedSegIdx = -1;
+    var ph = document.querySelector(".route-num.highlighted");
+    if (ph) ph.classList.remove("highlighted");
+    return;
+  }
+  var ph = document.querySelector(".route-num.highlighted");
+  if (ph) ph.classList.remove("highlighted");
+  highlightedSegIdx = segIdx;
+  activeSegments.forEach(function(s, i) {
+    if (i === segIdx) {
+      s.polyline.setStyle({ opacity: 1, weight: 7 });
+      s.polyline.bringToFront();
+      if (s.badge) { s.badge.setOpacity(1); s.badge.setZIndexOffset(10000); }
+    } else {
+      s.polyline.setStyle({ opacity: 0.12, weight: 1 });
+      if (s.badge) s.badge.setOpacity(0.12);
+    }
+  });
+  var t = document.querySelector('.route-num[data-seg="' + segIdx + '"]');
+  if (t) t.classList.add("highlighted");
+}
+
 // ===== 右侧面板（含打卡复选框） =====
 function updatePanel(dayKey, markers) {
   var listEl = document.getElementById("routeList");
@@ -673,6 +689,7 @@ function updatePanel(dayKey, markers) {
       + '</div>';
 
     var seenCoords = {};
+    var segIdx = -1;
     route.ids.forEach(function(n, idx) {
       html += '<div class="route-arrow">⬇</div>';
       var v = visitMap[n];
@@ -688,10 +705,11 @@ function updatePanel(dayKey, markers) {
       var timeOrDoneHtml = cinfo ? '<div class="time">已完成</div>' : (timeStr?'<div class="time">⏰ 预计 '+timeStr+'</div>':'');
 
       if (!isMerged) {
+        segIdx++;
         html += '<div class="route-item">'
           + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" '
           + (cinfo?' checked':'') + '>'
-          + '<span class="route-num '+labelClass+(isCoffee?' school':'')+'">'+label+'</span>'
+          + '<span class="route-num '+labelClass+(isCoffee?' school':'')+'" data-seg="'+segIdx+'">'+label+'</span>'
           + '<div class="route-info"><div class="addr">'+v.addr+'</div><div class="name">'+v.name+'</div>'
           + timeOrDoneHtml
           + '</div></div>';
@@ -700,7 +718,7 @@ function updatePanel(dayKey, markers) {
         html += '<div class="route-item">'
           + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" '
           + (cinfo?' checked':'') + '>'
-          + '<span class="route-num merged">'+n+'</span>'
+          + '<span class="route-num merged" data-seg="'+segIdx+'">'+n+'</span>'
           + '<div class="route-info"><div class="addr" style="color:#999">同地址，连续家访</div>'
           + (cinfo?'<div class="time">已完成</div>':'')
           + '</div></div>';
@@ -763,6 +781,13 @@ function updateActiveTab(dayKey) {
     else { btns[i].classList.remove("active"); }
   }
 }
+
+document.getElementById("routeList").addEventListener("click", function(e) {
+  var t = e.target;
+  if (t.classList.contains("route-num") && t.dataset.seg !== undefined) {
+    highlightSegment(parseInt(t.dataset.seg));
+  }
+});
 
 document.getElementById("tabBar").addEventListener("click", function(e) {
   var target = e.target;
