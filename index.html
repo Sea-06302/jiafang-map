@@ -479,22 +479,6 @@ function fetchWalkingRouteCoords(fromLng, fromLat, toLng, toLat) {
 function parseMin(str) { var p=str.split(":"); return parseInt(p[0])*60+parseInt(p[1]); }
 function fmtMin(m) { var h=Math.floor(m/60)%24, mm=m%60; return (h<10?"0":"")+h+":"+(mm<10?"0":"")+mm; }
 
-function addSegmentBadge(coords, fromLabel, toLabel, color, type) {
-  if (coords.length < 4) return null;
-  var idx = Math.floor(coords.length * 0.45);
-  var idx2 = Math.min(idx+2, coords.length-1);
-  var ang = bearing(coords[idx][0], coords[idx][1], coords[idx2][0], coords[idx2][1]);
-  var isWalk = type === "walking";
-  var badgeColor = isWalk ? WALK_COLOR : color;
-  var modeIcon = isWalk ? " 🚶" : "";
-
-  var html = '<div style="display:flex;align-items:center;gap:2px;white-space:nowrap">'
-    + '<svg width="14" height="14" viewBox="0 0 14 14" style="transform:rotate('+ang+'deg)"><polygon points="12,7 2,2 4,7 2,12" fill="'+badgeColor+'" opacity="0.85"/></svg>'
-    + '<span style="font-size:10px;font-weight:bold;color:'+badgeColor+';background:rgba(255,255,255,0.9);padding:1px 5px;border-radius:6px;border:1px solid '+badgeColor+'">'+fromLabel+'→'+toLabel+modeIcon+'</span>'
-    + '</div>';
-  var icon = L.divIcon({ className:"", html:html, iconSize:[90,18], iconAnchor:[45,9] });
-  return L.marker([coords[idx][0], coords[idx][1]], { icon:icon, interactive:false }).addTo(routeLayer);
-}
 
 function fetchRealRoutes(points, pointLabels, routeColor, dayKey) {
   var promises = [];
@@ -524,10 +508,8 @@ function fetchRealRoutes(points, pointLabels, routeColor, dayKey) {
           dashArray: isWalk ? "10 6" : null, className: "route-segment"
         }).addTo(routeLayer);
 
-        var badge = addSegmentBadge(seg.coords, pointLabels[i], pointLabels[i+1], segColor, seg.type);
-
-
-        activeSegments.push({ polyline: polyline, badge: badge, type: seg.type });
+        
+        activeSegments.push({ polyline: polyline, type: seg.type });
       } else {
         L.polyline([points[i], points[i+1]], { color: routeColor, weight: 2, opacity: 0.25, dashArray: "6 4" }).addTo(routeLayer);
       }
@@ -630,7 +612,6 @@ function updatePanelTimes(dayKey, times) {
 function resetAllSegments() {
   activeSegments.forEach(function(s) {
     s.polyline.setStyle({ opacity: 0.78, weight: 4 });
-    if (s.badge) { s.badge.setOpacity(1); s.badge.setZIndexOffset(0); }
   });
 }
 function highlightSegment(segIdx) {
@@ -649,10 +630,8 @@ function highlightSegment(segIdx) {
     if (i === segIdx) {
       s.polyline.setStyle({ opacity: 1, weight: 7 });
       s.polyline.bringToFront();
-      if (s.badge) { s.badge.setOpacity(1); s.badge.setZIndexOffset(10000); }
     } else {
       s.polyline.setStyle({ opacity: 0.12, weight: 1 });
-      if (s.badge) s.badge.setOpacity(0.12);
     }
   });
   var t = document.querySelector('.route-num[data-seg="' + segIdx + '"]');
