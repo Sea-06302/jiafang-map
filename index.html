@@ -188,7 +188,7 @@ visits.forEach(function(v) { visitMap[v.n] = v; });
 var routes = {
   "all": { label:"全部地址", sub:"26条记录 · 23个标记", ids:[] },
   "7/14": {
-    label:"7月14日 星期二", sub:"4户 · 13:30-16:12 · 洋泾→罗山路→张江南→中科路",
+    label:"7月14日 星期二", sub:"4户 · 13:00起 · 洋泾→罗山路→张江南→中科路",
     ids:[11, 8, 12, 17],
     times:["13:55","14:40","15:18","15:52"]
   },
@@ -198,7 +198,7 @@ var routes = {
     times:["9:18","9:53","10:38"]
   },
   "7/17": {
-    label:"7月17日 星期五", sub:"3户 · 16:30-19:40 · 三林→张江南→金葵路",
+    label:"7月17日 星期五", sub:"3户 · 9:00起 · 三林→张江南→金葵路",
     ids:[7, 20, 28],
     times:["17:00","18:00","19:00"]
   },
@@ -367,8 +367,10 @@ function showDay(dayKey) {
         iconSize:[28+label.length*7.5+14,28], iconAnchor:[14,26], popupAnchor:[label.length*3.5,-28]
       });
       var mk = L.marker([gcj.lat, gcj.lng], { icon:icon, zIndexOffset:1000 });
-      if (dayKey !== "all") {
-        (function(si) { mk.on("click", function() { highlightSegment(si); }); })(segIdx);
+      if (dayKey !== "all" && segIdx > 0) {
+        (function(si) { mk.on("click", function() { highlightSegment(si-1); }); })(segIdx);
+      } else if (dayKey !== "all") {
+        // first marker, no incoming route
       } else {
         mk.bindPopup('<b>⭐ '+g.name+'</b><br><small>'+g.addr+'</small>');
       }
@@ -380,8 +382,10 @@ function showDay(dayKey) {
         iconSize:[iconW,32], iconAnchor:[11,32], popupAnchor:[iconW/2-11,-34]
       });
       var mk = L.marker([gcj.lat, gcj.lng], { icon:icon });
-      if (dayKey !== "all") {
-        (function(si) { mk.on("click", function() { highlightSegment(si); }); })(segIdx);
+      if (dayKey !== "all" && segIdx > 0) {
+        (function(si) { mk.on("click", function() { highlightSegment(si-1); }); })(segIdx);
+      } else if (dayKey !== "all") {
+        // first marker, no incoming route
       } else {
         mk.bindPopup('<b>'+g.name+'</b><br><small>'+g.addr+'</small>');
       }
@@ -391,12 +395,9 @@ function showDay(dayKey) {
 
   // 路线
   if (dayKey !== "all" && markerCoords.length > 0) {
-    var schoolGcj = wgs2gcj(SCHOOL.lng, SCHOOL.lat);
-    var points = [[schoolGcj.lat, schoolGcj.lng]];
-    var pointLabels = ["校"];
+    var points = [];
+    var pointLabels = [];
     markerCoords.forEach(function(m) { points.push([m.lat, m.lng]); pointLabels.push(m.nums.join("&")); });
-    points.push([schoolGcj.lat, schoolGcj.lng]);
-    pointLabels.push("校");
 
     var dashPath = [];
     points.forEach(function(p) { dashPath.push([p[0], p[1]]); });
@@ -531,9 +532,10 @@ function fetchRealRoutes(points, pointLabels, routeColor, dayKey) {
 
 function recalcAndUpdate(dayKey, allSegments) {
   var route = routes[dayKey];
-  var departStr = dayKey==="7/14" ? "13:30" : (dayKey==="7/17" ? "16:30" : "9:00");
+  var departStr = dayKey==="7/14" ? "13:00" : "9:00";
   var currentMin = parseMin(departStr);
-  var prevCoordKey = "school";
+  var prevCoordKey = null;
+  var isFirst = true;
 
   var coordOrder = [];
   route.ids.forEach(function(n) {
@@ -554,6 +556,11 @@ function recalcAndUpdate(dayKey, allSegments) {
     if (coordKey === prevCoordKey) {
       var isCoffee = (v.name||"").indexOf("咖啡厅") >= 0;
       newTimes.push(isCoffee ? "←咖啡厅合并" : "←同地址");
+    } else if (isFirst) {
+      newTimes.push(departStr);
+      currentMin = parseMin(departStr) + 20;
+      prevCoordKey = coordKey;
+      isFirst = false;
     } else {
       if (segIdx < allSegments.length) {
         var seg = allSegments[segIdx];
@@ -592,7 +599,7 @@ function recalcAndUpdate(dayKey, allSegments) {
     if (newTimes[i] && newTimes[i].indexOf("←") < 0) { lastTime = newTimes[i]; break; }
   }
   var lastSeg = allSegments[allSegments.length-1];
-  if (lastSeg && lastSeg.durationSec > 0) lastTime = fmtMin(parseMin(lastTime) + 20 + Math.round(lastSeg.durationSec/60) + 10);
+  if (lastSeg && lastSeg.durationSec > 0) lastTime = fmtMin(parseMin(lastTime) + Math.round(lastSeg.durationSec/60) + 10);
   var newSub = route.sub.replace(/ · 步行≈\d+min/g, "").replace(/ · 驾车≈\d+min/g, "").replace(/ · 高德出行≈\d+min/g, "");
   newSub = newSub.replace(/\d{1,2}:\d{2}-\d{1,2}:\d{2}/, function(oldRange) { return oldRange.split("-")[0] + "-" + lastTime; });
   if (totalWalkSec > 0) newSub += " · 步行≈" + Math.round(totalWalkSec/60) + "min";
@@ -671,16 +678,13 @@ function updatePanel(dayKey, markers) {
   } else {
     var route = routes[dayKey];
     var html = "";
-    var departTime = dayKey==="7/14" ? "13:30" : (dayKey==="7/17" ? "16:30" : "9:00");
-    html += '<div class="route-item">'
-      + '<span class="route-num school">起</span>'
-      + '<div class="route-info"><div class="addr">'+SCHOOL.name+'</div><div class="name">'+SCHOOL.addr+'</div><div class="time">'+departTime+' 出发</div></div>'
-      + '</div>';
+    var departTime = dayKey==="7/14" ? "13:00" : "9:00";
 
     var seenCoords = {};
     var segIdx = -1;
+    var isFirstItem = true;
     route.ids.forEach(function(n, idx) {
-      html += '<div class="route-arrow">⬇</div>';
+      if (isFirstItem) { isFirstItem = false; } else { html += '<div class="route-arrow">⬇</div>'; }
       var v = visitMap[n];
       if (!v) return;
       var key = v.lat.toFixed(5)+","+v.lng.toFixed(5);
@@ -695,30 +699,27 @@ function updatePanel(dayKey, markers) {
 
       if (!isMerged) {
         segIdx++;
+        var segAttr2 = segIdx > 0 ? ' data-seg="'+(segIdx-1)+'" onclick="highlightSegment('+(segIdx-1)+')"' : '';
         html += '<div class="route-item">'
           + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" '
           + (cinfo?' checked':'') + '>'
-          + '<span class="route-num '+labelClass+(isCoffee?' school':'')+'" data-seg="'+segIdx+'" onclick="highlightSegment('+segIdx+')">'+label+'</span>'
+          + '<span class="route-num '+labelClass+(isCoffee?' school':'')+'"'+segAttr2+'>'+label+'</span>'
           + '<div class="route-info"><div class="addr">'+v.addr+'</div><div class="name">'+v.name+'</div>'
           + timeOrDoneHtml
           + '</div></div>';
         seenCoords[key] = true;
       } else {
+        var segAttr3 = segIdx > 0 ? ' data-seg="'+(segIdx-1)+'" onclick="highlightSegment('+(segIdx-1)+')"' : '';
         html += '<div class="route-item">'
           + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" '
           + (cinfo?' checked':'') + '>'
-          + '<span class="route-num merged" data-seg="'+segIdx+'" onclick="highlightSegment('+segIdx+')">'+n+'</span>'
+          + '<span class="route-num merged"'+segAttr3+'>'+n+'</span>'
           + '<div class="route-info"><div class="addr" style="color:#999">同地址，连续家访</div>'
           + (cinfo?'<div class="time">已完成</div>':'')
           + '</div></div>';
       }
     });
 
-    html += '<div class="route-arrow">⬇</div>';
-    html += '<div class="route-item">'
-      + '<span class="route-num school">终</span>'
-      + '<div class="route-info"><div class="addr">返回 '+SCHOOL.name+'</div></div>'
-      + '</div>';
 
     listEl.innerHTML = html;
 
