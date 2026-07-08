@@ -584,19 +584,6 @@ function recalcAndUpdate(dayKey, allSegments) {
     if (n === 20 && newTimes[idx] && newTimes[idx].indexOf("←") < 0) newTimes[idx] = "18:00";
   });
 
-  // 硬约束后向前传播：确保后续时间不早于前一站+20min
-  for (var i = 0; i < newTimes.length - 1; i++) {
-    if (newTimes[i] && newTimes[i].indexOf("←") < 0) {
-      var baseMin = parseMin(newTimes[i]) + 20;
-      for (var j = i + 1; j < newTimes.length; j++) {
-        if (newTimes[j] && newTimes[j].indexOf("←") < 0) {
-          if (parseMin(newTimes[j]) < baseMin) newTimes[j] = fmtMin(baseMin);
-          baseMin = parseMin(newTimes[j]) + 20;
-        }
-      }
-    }
-  }
-
   route.times = newTimes;
 
   // 更新副标题
