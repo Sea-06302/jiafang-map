@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>张江镇及周边 — 家访路线规划</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+  #map { width: 100vw; height: 100vh; }
+
+  .tab-bar {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000;
+    display: flex; gap: 4px; background: rgba(255,255,255,0.94); border-radius: 10px;
+    padding: 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+  }
+  .tab-bar button {
+    font-size: 13px; padding: 8px 16px; border: none; border-radius: 6px;
+    background: transparent; cursor: pointer; font-weight: 500; color: #555;
+    white-space: nowrap; transition: all 0.15s;
+  }
+  .tab-bar button:hover { background: #f0f0f0; }
+  .tab-bar button.active { background: #2c3e50; color: #fff; }
+
+  .info-panel {
+    position: absolute; top: 80px; right: 10px; z-index: 1000;
+    background: rgba(255,255,255,0.94); border-radius: 8px;
+    padding: 14px 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+    max-height: calc(100vh - 120px); overflow-y: auto; font-size: 13px; min-width: 280px; max-width: 340px;
+  }
+  .info-panel h3 { font-size: 15px; margin-bottom: 4px; color: #333; }
+  .info-panel .subtitle { font-size: 11px; color: #999; margin-bottom: 10px; }
+  .route-list { margin-bottom: 8px; }
+  .route-item {
+    display: flex; align-items: flex-start; gap: 8px; padding: 5px 0;
+    border-bottom: 1px solid #f5f5f5; font-size: 12px;
+  }
+  .route-item.checked-early { background: #e8f8e8; border-radius: 4px; padding-left: 4px; }
+  .route-item.checked-late { background: #fff4e8; border-radius: 4px; padding-left: 4px; }
+  .route-item.checked-ontime { background: #e8f0ff; border-radius: 4px; padding-left: 4px; }
+  .route-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 22px; height: 22px; border-radius: 50%;
+    background: #2c3e50; color: #fff; font-weight: bold; font-size: 11px; flex-shrink: 0;
+  }
+  .route-num.school { background: #e67e22; }
+  .route-num.merged { min-width: auto; padding: 0 6px; border-radius: 11px; }
+  .route-info { flex: 1; min-width: 0; }
+  .route-info .addr { color: #333; font-weight: 500; }
+  .route-info .name { color: #999; font-size: 11px; }
+  .route-info .time { color: #e67e22; font-size: 10px; }
+  .route-checkbox { flex-shrink: 0; cursor: pointer; width: 16px; height: 16px; margin-top: 3px; accent-color: #2c3e50; }
+  .check-status { font-size: 10px; margin-left: 6px; white-space: nowrap; }
+  .check-status.early { color: #27ae60; font-weight: bold; }
+  .check-status.late { color: #e67e22; font-weight: bold; }
+  .check-status.ontime { color: #3498db; }
+  .route-arrow { color: #ccc; font-size: 16px; text-align: center; margin: 2px 0 2px 11px; }
+  .summary-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: #666; border-top: 1px solid #eee; padding-top: 10px; }
+  .summary-row b { color: #333; }
+
+  .legend-mini { font-size: 11px; color: #999; margin-top: 8px; }
+  .legend-mini .leg-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  .route-segment { cursor: pointer; transition: opacity 0.2s; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="tab-bar" id="tabBar">
+  <button data-day="all" class="active">全部</button>
+  <button data-day="7/14">7/14 周二</button>
+  <button data-day="7/16">7/16 周四</button>
+  <button data-day="7/17">7/17 周五</button>
+  <button data-day="7/18">7/18 周六</button>
+</div>
+
+<div class="info-panel" id="infoPanel">
+  <h3 id="dayTitle">全部地址</h3>
+  <div class="subtitle" id="daySub"></div>
+  <div class="route-list" id="routeList"></div>
+  <div class="summary-row" id="summary"></div>
+  <div class="legend-mini" id="legend"></div>
+</div>
+
+<script>
+// ===== WGS-84 → GCJ-02 =====
+function wgs2gcj(wgLng, wgLat) {
+  var PI = Math.PI, a = 6378245.0, ee = 0.00669342162296594323;
+  function transformLat(x, y) {
+    var ret = -100.0 + 2.0*x + 3.0*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x));
+    ret += (20.0*Math.sin(6.0*x*PI) + 20.0*Math.sin(2.0*x*PI)) * 2.0 / 3.0;
+    ret += (20.0*Math.sin(y*PI) + 40.0*Math.sin(y/3.0*PI)) * 2.0 / 3.0;
+    ret += (160.0*Math.sin(y/12.0*PI) + 320.0*Math.sin(y*PI/30.0)) * 2.0 / 3.0;
+    return ret;
+  }
+  function transformLng(x, y) {
+    var ret = 300.0 + x + 2.0*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x));
+    ret += (20.0*Math.sin(6.0*x*PI) + 20.0*Math.sin(2.0*x*PI)) * 2.0 / 3.0;
+    ret += (20.0*Math.sin(x*PI) + 40.0*Math.sin(x/3.0*PI)) * 2.0 / 3.0;
+    ret += (150.0*Math.sin(x/12.0*PI) + 300.0*Math.sin(x/30.0*PI)) * 2.0 / 3.0;
+    return ret;
+  }
+  var dLat = transformLat(wgLng - 105.0, wgLat - 35.0);
+  var dLng = transformLng(wgLng - 105.0, wgLat - 35.0);
+  var radLat = wgLat / 180.0 * PI;
+  var magic = Math.sin(radLat);
+  magic = 1 - ee * magic * magic;
+  var sqrtMagic = Math.sqrt(magic);
+  var dLat2 = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * PI);
+  var dLng2 = (dLng * 180.0) / (a / sqrtMagic * Math.cos(radLat) * PI);
+  return { lat: wgLat + dLat2, lng: wgLng + dLng2 };
+}
+
+// ===== 学校 =====
+var SCHOOL = { name: "复旦大学附属浦东实验学校", addr: "银柳路550号", lat: 31.2350, lng: 121.5950 };
+
+// ===== 全部数据（WGS-84） =====
+var visits = [
+  { n:1,  addr:"香楠路199弄",        name:"香楠小区",          lat:31.2075, lng:121.6100 },
+  { n:2,  addr:"张江镇龙三路98弄",   name:"杨镇新村/龙三小区", lat:31.2208, lng:121.5900 },
+  { n:3,  addr:"银柳路849弄",        name:"宝地东郊四季",      lat:31.2320, lng:121.5965 },
+  { n:4,  addr:"成山路1488弄",       name:"珐朵公馆/珞斐墅",   lat:31.1850, lng:121.5450, outOfScope:true },
+  { n:6,  addr:"张江镇龙三路152弄",  name:"杨镇新村/龙三小区", lat:31.2202, lng:121.5908 },
+  { n:7,  addr:"高青路4567弄",       name:"莲康苑",            lat:31.1620, lng:121.5480 },
+  { n:8,  addr:"罗山路2255弄",       name:"汤臣湖庭花园",      lat:31.2105, lng:121.5880 },
+  { n:9,  addr:"张江镇龙东大道2255弄", name:"龙东花园",        lat:31.2120, lng:121.6085 },
+  { n:11, addr:"桃林路299弄",        name:"尚海郦景",          lat:31.2350, lng:121.5450 },
+  { n:12, addr:"川河路333弄",        name:"万科翡翠公园六期",  lat:31.2025, lng:121.6090 },
+  { n:13, addr:"金桥路3379弄",       name:"三桥小区",          lat:31.2475, lng:121.6020 },
+  { n:14, addr:"杨镇路76弄",         name:"杨镇新村",          lat:31.2210, lng:121.5895 },
+  { n:16, addr:"罗山路2255弄",       name:"汤臣湖庭花园",      lat:31.2105, lng:121.5880 },
+  { n:17, addr:"中科路2660弄",       name:"川杨新苑四期",      lat:31.1960, lng:121.6130 },
+  { n:18, addr:"张江镇龙三路166弄",  name:"杨镇新村/龙三小区", lat:31.2197, lng:121.5915 },
+  { n:19, addr:"学校附近咖啡厅",     name:"复旦附属浦东实验(咖啡厅)", lat:31.2350, lng:121.5950 },
+  { n:20, addr:"川河路388弄",        name:"万科翡翠公园四期",  lat:31.2030, lng:121.6110 },
+  { n:21, addr:"孙农路397弄",        name:"中建朗阅府",        lat:31.1850, lng:121.6200 },
+  { n:22, addr:"张江镇龙三路166弄",  name:"杨镇新村/龙三小区", lat:31.2197, lng:121.5915 },
+  { n:23, addr:"学校附近咖啡厅",     name:"咖啡厅见面（与#19合并）", lat:31.2350, lng:121.5950 },
+  { n:24, addr:"香楠路399弄",        name:"城市经典一期",      lat:31.2070, lng:121.6050 },
+  { n:25, addr:"孙桥路185号",        name:"圣宇豪庭",          lat:31.1850, lng:121.6220 },
+  { n:26, addr:"中科路2195弄",       name:"川杨新苑一期",      lat:31.1960, lng:121.6150 },
+  { n:27, addr:"博山东路188弄",      name:"通联苑二期",        lat:31.2520, lng:121.5700, outOfScope:true },
+  { n:28, addr:"金葵路288弄",        name:"开云星荟华庭",      lat:31.2480, lng:121.5950 },
+  { n:15, addr:"桃林路299弄",        name:"尚海郦景",          lat:31.2350, lng:121.5450, outOfScope:true }
+];
+
+var visitMap = {};
+visits.forEach(function(v) { visitMap[v.n] = v; });
+
+// ===== 每日路线 =====
+var routes = {
+  "all": { label:"全部地址", sub:"26条记录 · 23个标记", ids:[] },
+  "7/14": {
+    label:"7月14日 星期二", sub:"4户 · 13:30-16:12 · 洋泾→罗山路→张江南→中科路",
+    ids:[11, 8, 12, 17],
+    times:["13:55","14:40","15:18","15:52"]
+  },
+  "7/16": {
+    label:"7月16日 星期四", sub:"3户 · 9:00-10:58 · 杨镇→中科路",
+    ids:[14, 2, 26],
+    times:["9:18","9:53","10:38"]
+  },
+  "7/17": {
+    label:"7月17日 星期五", sub:"3户 · 16:30-19:40 · 三林→张江南→金葵路",
+    ids:[7, 20, 28],
+    times:["17:00","18:00","19:00"]
+  },
+  "7/18": {
+    label:"7月18日 星期六", sub:"10户+咖啡 · 9:00-17:28 · 仅限周六 · 银柳→龙三→罗山→香楠→孙桥→龙东→咖啡厅",
+    ids:[3, 6, 18, 22, 16, 24, 1, 21, 25, 9, 19, 23],
+    times:["9:15","9:50","←同地址","←同地址","10:25","11:00","11:35","13:00","13:45","16:00","17:08","←咖啡厅合并"]
+  }
+};
+
+// ===== 颜色 =====
+var DAY_COLORS = {
+  "7/14": "#3498db",
+  "7/16": "#27ae60",
+  "7/17": "#e67e22",
+  "7/18": "#8e44ad"
+};
+var GRAY_COLOR = "#bbb";
+var STAR_COLOR = "#f1c40f";
+var WALK_COLOR = "#2ecc71";
+var AMAP_KEY = "8c386ee7a8b95b9b2714fd480a87f28b";
+var routeCache = {};
+var activeSegments = [];
+
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  var R = 6371000;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLng = (lng2 - lng1) * Math.PI / 180;
+  var a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng/2) * Math.sin(dLng/2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+// ===== 打卡 =====
+var CHECKINS_KEY = "jiafang_checkins_v2";
+function loadCheckins() {
+  try { return JSON.parse(localStorage.getItem(CHECKINS_KEY)) || {}; }
+  catch(e) { return {}; }
+}
+function saveCheckins(data) {
+  try { localStorage.setItem(CHECKINS_KEY, JSON.stringify(data)); }
+  catch(e) {}
+}
+function toggleCheckin(dayKey, n, scheduledTime) {
+  var all = loadCheckins();
+  if (!all[dayKey]) all[dayKey] = {};
+  if (all[dayKey][n]) {
+    delete all[dayKey][n];
+  } else {
+    var now = new Date();
+    var hh = now.getHours(), mm = now.getMinutes();
+    all[dayKey][n] = { time: (hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm, actualMin: hh*60+mm };
+  }
+  saveCheckins(all);
+  showDay(currentDay);
+}
+
+// 编号→日期
+var visitDayMap = {};
+for (var dk in routes) {
+  if (dk === "all") continue;
+  routes[dk].ids.forEach(function(n) { visitDayMap[n] = dk; });
+}
+function getDayColor(dayKey) { return DAY_COLORS[dayKey] || GRAY_COLOR; }
+
+// ===== 地图 =====
+var map = L.map("map").setView([31.215, 121.595], 12);
+L.tileLayer("https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}", {
+  subdomains:"1234", attribution:"&copy; 高德地图", maxZoom:18
+}).addTo(map);
+L.control.scale({ metric:true, imperial:false }).addTo(map);
+
+var markerLayer = L.layerGroup().addTo(map);
+var routeLayer = L.layerGroup().addTo(map);
+var schoolLayer = L.layerGroup().addTo(map);
+
+function addSchoolMarker() {
+  schoolLayer.clearLayers();
+  var gcj = wgs2gcj(SCHOOL.lng, SCHOOL.lat);
+  var icon = L.divIcon({
+    className:"school-base",
+    html:'<div style="display:flex;align-items:center;white-space:nowrap"><svg width="32" height="32" viewBox="0 0 32 32"><polygon points="16,1 22,11 33,12 25,19 27,30 16,24 5,30 7,19 -1,12 10,11" fill="'+STAR_COLOR+'" stroke="#e67e22" stroke-width="1.2"/><text x="16" y="19" text-anchor="middle" font-size="10" font-weight="bold" fill="#333">校</text></svg><span style="font-size:11px;font-weight:bold;color:#333;background:#fff3cd;padding:2px 6px;border-radius:3px;margin-left:3px;box-shadow:0 1px 3px rgba(0,0,0,0.2);border:1px solid '+STAR_COLOR+'">学校</span></div>',
+    iconSize:[72,32], iconAnchor:[16,28], popupAnchor:[20,-30]
+  });
+  schoolLayer.addLayer(L.marker([gcj.lat, gcj.lng], { icon:icon, zIndexOffset:2000 }).bindPopup('<b>⭐ '+SCHOOL.name+'</b><br><small>'+SCHOOL.addr+'</small>'));
+}
+
+function bearing(lat1, lng1, lat2, lng2) {
+  var dLng = (lng2 - lng1) * Math.PI / 180;
+  var y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
+  var x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) - Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLng);
+  return Math.atan2(y, x) * 180 / Math.PI;
+}
+
+// ===== 主渲染 =====
+var currentDay = "all";
+
+function showDay(dayKey) {
+  currentDay = dayKey;
+  markerLayer.clearLayers();
+  routeLayer.clearLayers();
+  activeSegments = [];
+
+  var route = routes[dayKey];
+  var allMarkers = [];
+
+  if (dayKey === "all") {
+    var groupMap = {};
+    visits.forEach(function(v) {
+      if (v.outOfScope) return; // 不在地图上显示
+      var key = v.lat.toFixed(5) + "," + v.lng.toFixed(5);
+      if (groupMap[key]) { groupMap[key].nums.push(v.n); }
+      else { groupMap[key] = { nums:[v.n], name:v.name, addr:v.addr, lat:v.lat, lng:v.lng }; }
+    });
+    Object.values(groupMap).forEach(function(g) { allMarkers.push(g); });
+    document.getElementById("dayTitle").textContent = "全部地址";
+    document.getElementById("daySub").textContent = "26条记录 · " + allMarkers.length + " 个标记";
+  } else {
+    var dayGroupMap = {};
+    route.ids.forEach(function(n, idx) {
+      var v = visitMap[n];
+      if (!v) return;
+      var key = v.lat.toFixed(5) + "," + v.lng.toFixed(5);
+      if (dayGroupMap[key]) { dayGroupMap[key].nums.push(n); }
+      else { dayGroupMap[key] = { nums:[n], name:v.name, addr:v.addr, lat:v.lat, lng:v.lng, order:idx }; }
+    });
+    var seen = {};
+    route.ids.forEach(function(n) {
+      var v = visitMap[n];
+      if (!v) return;
+      var key = v.lat.toFixed(5) + "," + v.lng.toFixed(5);
+      if (!seen[key]) { seen[key] = true; allMarkers.push(dayGroupMap[key]); }
+    });
+    document.getElementById("dayTitle").textContent = route.label;
+    document.getElementById("daySub").textContent = route.sub;
+  }
+
+  var routeColor = dayKey === "all" ? "#e74c3c" : getDayColor(dayKey);
+  var markerCoords = [];
+
+  allMarkers.forEach(function(g) {
+    var gcj = wgs2gcj(g.lng, g.lat);
+    markerCoords.push({ lat:gcj.lat, lng:gcj.lng, nums:g.nums, name:g.name, addr:g.addr });
+    var label = g.nums.join("&");
+    var isCoffee = (g.name||"").indexOf("咖啡厅") >= 0;
+
+    var color;
+    if (isCoffee) {
+      color = STAR_COLOR;
+    } else if (dayKey === "all") {
+      var foundDay = null;
+      g.nums.forEach(function(n) { if (!foundDay && visitDayMap[n]) foundDay = visitDayMap[n]; });
+      color = foundDay ? getDayColor(foundDay) : GRAY_COLOR;
+    } else {
+      color = routeColor;
+    }
+
+    if (isCoffee) {
+      var iconW = 32 + label.length * 7.5 + 14;
+      var icon = L.divIcon({
+        html:'<div style="display:flex;align-items:center;white-space:nowrap"><svg width="28" height="28" viewBox="0 0 28 28"><polygon points="14,1 19,10 29,11 22,17 24,27 14,21 4,27 6,17 -1,11 9,10" fill="'+STAR_COLOR+'" stroke="#e67e22" stroke-width="1"/><text x="14" y="17" text-anchor="middle" font-size="9" font-weight="bold" fill="#333">校</text></svg><span style="font-size:12px;font-weight:bold;color:#333;background:#fff3cd;padding:2px 6px;border-radius:3px;margin-left:3px;line-height:1.3;box-shadow:0 1px 3px rgba(0,0,0,0.2);border:1px solid '+STAR_COLOR+'">'+label+'</span></div>',
+        iconSize:[28+label.length*7.5+14,28], iconAnchor:[14,26], popupAnchor:[label.length*3.5,-28]
+      });
+      L.marker([gcj.lat, gcj.lng], { icon:icon, zIndexOffset:1000 })
+        .bindPopup('<b>⭐ '+g.name+'</b><br><small>'+g.addr+'</small>')
+        .addTo(markerLayer);
+    } else {
+      var iconW = 22 + label.length * 7.5 + 14;
+      var icon = L.divIcon({
+        html:'<div style="display:flex;align-items:center;white-space:nowrap"><svg width="22" height="32" viewBox="0 0 22 32"><path d="M11 0C4.9 0 0 4.9 0 11c0 8.2 11 21 11 21s11-12.8 11-21C22 4.9 17.1 0 11 0z" fill="'+color+'" stroke="#fff" stroke-width="1.2"/></svg><span style="font-size:12px;font-weight:bold;color:#fff;background:'+color+';padding:2px 6px;border-radius:3px;margin-left:2px;line-height:1.3;box-shadow:0 1px 3px rgba(0,0,0,0.3)">'+label+'</span></div>',
+        iconSize:[iconW,32], iconAnchor:[11,32], popupAnchor:[iconW/2-11,-34]
+      });
+      L.marker([gcj.lat, gcj.lng], { icon:icon })
+        .bindPopup('<b>'+g.name+'</b><br><small>'+g.addr+'</small>')
+        .addTo(markerLayer);
+    }
+  });
+
+  // 路线
+  if (dayKey !== "all" && markerCoords.length > 0) {
+    var schoolGcj = wgs2gcj(SCHOOL.lng, SCHOOL.lat);
+    var points = [[schoolGcj.lat, schoolGcj.lng]];
+    var pointLabels = ["校"];
+    markerCoords.forEach(function(m) { points.push([m.lat, m.lng]); pointLabels.push(m.nums.join("&")); });
+    points.push([schoolGcj.lat, schoolGcj.lng]);
+    pointLabels.push("校");
+
+    var dashPath = [];
+    points.forEach(function(p) { dashPath.push([p[0], p[1]]); });
+    L.polyline(dashPath, { color:routeColor, weight:2, opacity:0.25, dashArray:"6 4" }).addTo(routeLayer);
+    fetchRealRoutes(points, pointLabels, routeColor, dayKey);
+  }
+
+  updatePanel(dayKey, allMarkers);
+  updateActiveTab(dayKey);
+}
+
+// ===== API 调用 =====
+function fetchRouteCoords(fromLng, fromLat, toLng, toLat) {
+  var cacheKey = "car:" + fromLng.toFixed(4)+","+fromLat.toFixed(4)+"-"+toLng.toFixed(4)+","+toLat.toFixed(4);
+  if (routeCache[cacheKey]) return Promise.resolve(routeCache[cacheKey]);
+
+  return new Promise(function(resolve) {
+    var cbName = "_amap_" + Math.random().toString(36).substr(2, 9);
+    var script = document.createElement("script");
+    var timeout = setTimeout(function() { cleanup(); resolve(null); }, 8000);
+    function cleanup() { clearTimeout(timeout); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); }
+    window[cbName] = function(data) {
+      cleanup();
+      if (data && data.status === "1" && data.route && data.route.paths && data.route.paths.length > 0) {
+        var steps = data.route.paths[0].steps;
+        var allCoords = [];
+        steps.forEach(function(step) {
+          var poly = step.polyline;
+          if (poly) {
+            poly.split(";").forEach(function(pt) {
+              var parts = pt.split(",");
+              if (parts.length === 2) allCoords.push([parseFloat(parts[1]), parseFloat(parts[0])]);
+            });
+          }
+        });
+        if (allCoords.length > 1) {
+          var result = { coords: allCoords, durationSec: parseInt(data.route.paths[0].duration) || 0, type: "driving" };
+          routeCache[cacheKey] = result;
+          resolve(result);
+          return;
+        }
+      }
+      resolve(null);
+    };
+    script.src = "https://restapi.amap.com/v3/direction/driving?origin="+fromLng+","+fromLat+"&destination="+toLng+","+toLat+"&strategy=0&extensions=all&key="+AMAP_KEY+"&callback="+cbName;
+    script.onerror = function() { cleanup(); resolve(null); };
+    document.body.appendChild(script);
+  });
+}
+
+function fetchWalkingRouteCoords(fromLng, fromLat, toLng, toLat) {
+  var cacheKey = "walk:" + fromLng.toFixed(4)+","+fromLat.toFixed(4)+"-"+toLng.toFixed(4)+","+toLat.toFixed(4);
+  if (routeCache[cacheKey]) return Promise.resolve(routeCache[cacheKey]);
+
+  return new Promise(function(resolve) {
+    var cbName = "_amap_" + Math.random().toString(36).substr(2, 9);
+    var script = document.createElement("script");
+    var timeout = setTimeout(function() { cleanup(); resolve(null); }, 8000);
+    function cleanup() { clearTimeout(timeout); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); }
+    window[cbName] = function(data) {
+      cleanup();
+      if (data && data.status === "1" && data.route && data.route.paths && data.route.paths.length > 0) {
+        var steps = data.route.paths[0].steps;
+        var allCoords = [];
+        steps.forEach(function(step) {
+          var poly = step.polyline;
+          if (poly) {
+            poly.split(";").forEach(function(pt) {
+              var parts = pt.split(",");
+              if (parts.length === 2) allCoords.push([parseFloat(parts[1]), parseFloat(parts[0])]);
+            });
+          }
+        });
+        if (allCoords.length > 1) {
+          var result = { coords: allCoords, durationSec: parseInt(data.route.paths[0].duration) || 0, type: "walking" };
+          routeCache[cacheKey] = result;
+          resolve(result);
+          return;
+        }
+      }
+      resolve(null);
+    };
+    script.src = "https://restapi.amap.com/v3/direction/walking?origin="+fromLng+","+fromLat+"&destination="+toLng+","+toLat+"&key="+AMAP_KEY+"&callback="+cbName;
+    script.onerror = function() { cleanup(); resolve(null); };
+    document.body.appendChild(script);
+  });
+}
+
+// ===== 时间工具 =====
+function parseMin(str) { var p=str.split(":"); return parseInt(p[0])*60+parseInt(p[1]); }
+function fmtMin(m) { var h=Math.floor(m/60)%24, mm=m%60; return (h<10?"0":"")+h+":"+(mm<10?"0":"")+mm; }
+
+function addSegmentBadge(coords, fromLabel, toLabel, color, type) {
+  if (coords.length < 4) return null;
+  var idx = Math.floor(coords.length * 0.45);
+  var idx2 = Math.min(idx+2, coords.length-1);
+  var ang = bearing(coords[idx][0], coords[idx][1], coords[idx2][0], coords[idx2][1]);
+  var isWalk = type === "walking";
+  var badgeColor = isWalk ? WALK_COLOR : color;
+  var modeIcon = isWalk ? " 🚶" : "";
+
+  var html = '<div style="display:flex;align-items:center;gap:2px;white-space:nowrap">'
+    + '<svg width="14" height="14" viewBox="0 0 14 14" style="transform:rotate('+ang+'deg)"><polygon points="12,7 2,2 4,7 2,12" fill="'+badgeColor+'" opacity="0.85"/></svg>'
+    + '<span style="font-size:10px;font-weight:bold;color:'+badgeColor+';background:rgba(255,255,255,0.9);padding:1px 5px;border-radius:6px;border:1px solid '+badgeColor+'">'+fromLabel+'→'+toLabel+modeIcon+'</span>'
+    + '</div>';
+  var icon = L.divIcon({ className:"", html:html, iconSize:[90,18], iconAnchor:[45,9] });
+  return L.marker([coords[idx][0], coords[idx][1]], { icon:icon, interactive:false }).addTo(routeLayer);
+}
+
+function fetchRealRoutes(points, pointLabels, routeColor, dayKey) {
+  var promises = [];
+  for (var i = 0; i < points.length - 1; i++) {
+    var dist = haversineDistance(points[i][0], points[i][1], points[i+1][0], points[i+1][1]);
+    if (dist < 800) {
+      promises.push(fetchWalkingRouteCoords(points[i][1], points[i][0], points[i+1][1], points[i+1][0]));
+    } else {
+      promises.push(fetchRouteCoords(points[i][1], points[i][0], points[i+1][1], points[i+1][0]));
+    }
+  }
+  Promise.all(promises).then(function(allSegments) {
+    if (dayKey !== currentDay) return;
+    var hasReal = allSegments.some(function(s) { return s && s.coords && s.coords.length > 1; });
+    if (!hasReal) return;
+
+    routeLayer.clearLayers();
+    activeSegments = [];
+
+    for (var i = 0; i < allSegments.length; i++) {
+      var seg = allSegments[i];
+      if (seg && seg.coords && seg.coords.length > 1) {
+        var isWalk = seg.type === "walking";
+        var segColor = isWalk ? WALK_COLOR : routeColor;
+        var polyline = L.polyline(seg.coords, {
+          color: segColor, weight: 4, opacity: 0.78,
+          dashArray: isWalk ? "10 6" : null, className: "route-segment"
+        }).addTo(routeLayer);
+
+        var badge = addSegmentBadge(seg.coords, pointLabels[i], pointLabels[i+1], segColor, seg.type);
+
+        polyline.on("mouseover", (function(pl, b) {
+          return function() {
+            activeSegments.forEach(function(s) {
+              if (s.polyline !== pl) {
+                s.polyline.setStyle({ opacity: 0.12, weight: 1 });
+                if (s.badge) s.badge.setOpacity(0.12);
+              } else {
+                s.polyline.setStyle({ opacity: 1, weight: 7 });
+                s.polyline.bringToFront();
+                if (s.badge) { s.badge.setOpacity(1); s.badge.setZIndexOffset(10000); }
+              }
+            });
+          };
+        })(polyline, badge));
+
+        polyline.on("mouseout", function() {
+          activeSegments.forEach(function(s) {
+            s.polyline.setStyle({ opacity: 0.78, weight: 4 });
+            if (s.badge) { s.badge.setOpacity(1); s.badge.setZIndexOffset(0); }
+          });
+        });
+
+        activeSegments.push({ polyline: polyline, badge: badge, type: seg.type });
+      } else {
+        L.polyline([points[i], points[i+1]], { color: routeColor, weight: 2, opacity: 0.25, dashArray: "6 4" }).addTo(routeLayer);
+      }
+    }
+
+    recalcAndUpdate(dayKey, allSegments);
+  });
+}
+
+function recalcAndUpdate(dayKey, allSegments) {
+  var route = routes[dayKey];
+  var departStr = dayKey==="7/14" ? "13:30" : (dayKey==="7/17" ? "16:30" : "9:00");
+  var currentMin = parseMin(departStr);
+  var prevCoordKey = "school";
+
+  var coordOrder = [];
+  route.ids.forEach(function(n) {
+    var v = visitMap[n];
+    if (!v) return;
+    var key = v.lat.toFixed(5)+","+v.lng.toFixed(5);
+    if (coordOrder.indexOf(key) < 0) coordOrder.push(key);
+  });
+
+  var newTimes = [];
+  var segIdx = 0;
+
+  route.ids.forEach(function(n, idx) {
+    var v = visitMap[n];
+    if (!v) { newTimes.push(""); return; }
+    var coordKey = v.lat.toFixed(5)+","+v.lng.toFixed(5);
+
+    if (coordKey === prevCoordKey) {
+      var isCoffee = (v.name||"").indexOf("咖啡厅") >= 0;
+      newTimes.push(isCoffee ? "←咖啡厅合并" : "←同地址");
+    } else {
+      if (segIdx < allSegments.length) {
+        var seg = allSegments[segIdx];
+        if (seg && seg.durationSec > 0) {
+          var buffer = (seg.type === "walking") ? 5 : 10;
+          currentMin += Math.round(seg.durationSec / 60) + buffer;
+        } else {
+          currentMin += 15;
+        }
+      }
+      newTimes.push(fmtMin(currentMin));
+      currentMin += 20;
+      prevCoordKey = coordKey;
+      segIdx++;
+    }
+  });
+
+  // 硬约束
+  route.ids.forEach(function(n, idx) {
+    if (n === 9 && newTimes[idx] && newTimes[idx].indexOf("←") < 0) newTimes[idx] = "16:00";
+    if (n === 20 && newTimes[idx] && newTimes[idx].indexOf("←") < 0) newTimes[idx] = "18:00";
+  });
+
+  route.times = newTimes;
+
+  // 更新副标题
+  var totalWalkSec = 0, totalDriveSec = 0;
+  allSegments.forEach(function(s) {
+    if (s && s.durationSec > 0) {
+      if (s.type === "walking") totalWalkSec += s.durationSec;
+      else totalDriveSec += s.durationSec;
+    }
+  });
+  var lastTime = "";
+  for (var i = newTimes.length-1; i >= 0; i--) {
+    if (newTimes[i] && newTimes[i].indexOf("←") < 0) { lastTime = newTimes[i]; break; }
+  }
+  var lastSeg = allSegments[allSegments.length-1];
+  if (lastSeg && lastSeg.durationSec > 0) lastTime = fmtMin(parseMin(lastTime) + 20 + Math.round(lastSeg.durationSec/60) + 10);
+  var newSub = route.sub.replace(/ · 步行≈\d+min/g, "").replace(/ · 驾车≈\d+min/g, "").replace(/ · 高德出行≈\d+min/g, "");
+  newSub = newSub.replace(/\d{1,2}:\d{2}-\d{1,2}:\d{2}/, function(oldRange) { return oldRange.split("-")[0] + "-" + lastTime; });
+  if (totalWalkSec > 0) newSub += " · 步行≈" + Math.round(totalWalkSec/60) + "min";
+  if (totalDriveSec > 0) newSub += " · 驾车≈" + Math.round(totalDriveSec/60) + "min";
+  route.sub = newSub;
+  document.getElementById("daySub").textContent = newSub;
+
+  updatePanelTimes(dayKey, newTimes);
+}
+
+function updatePanelTimes(dayKey, times) {
+  if (currentDay !== dayKey) return;
+  var timeEls = document.querySelectorAll("#routeList .time");
+  var ti = 0;
+  for (var i = 0; i < timeEls.length; i++) {
+    var el = timeEls[i];
+    if (el.textContent.indexOf("出发") >= 0) continue;
+    if (ti < times.length) {
+      var t = times[ti];
+      if (t.indexOf("←") === 0) { el.textContent = "⏱ " + t; }
+      else { el.textContent = "⏰ " + t; }
+      ti++;
+    }
+  }
+}
+
+// ===== 右侧面板（含打卡复选框） =====
+function updatePanel(dayKey, markers) {
+  var listEl = document.getElementById("routeList");
+  var summaryEl = document.getElementById("summary");
+  var checkins = loadCheckins();
+
+  if (dayKey === "all") {
+    var sorted = visits.filter(function(v) { return !v.outOfScope; }).sort(function(a,b) { return a.n - b.n; });
+    var html = "";
+    sorted.forEach(function(v) {
+      var isCoffee = (v.name||"").indexOf("咖啡厅") >= 0;
+      var d = visitDayMap[v.n];
+      var dayColor = d ? getDayColor(d) : "#2c3e50";
+      html += '<div class="route-item">'
+        + '<span class="route-num'+(isCoffee?' school':'')+'" style="background:'+dayColor+';color:#fff">'+v.n+'</span>'
+        + '<div class="route-info"><div class="addr">'+v.addr+'</div><div class="name">'+v.name+'</div></div>'
+        + '</div>';
+    });
+    listEl.innerHTML = html;
+    summaryEl.innerHTML = '共 <b>26</b> 条有效记录 · 跳过 #5 #10（/）<br><span style="color:#e67e22">4、7、12、15、27待联系</span>';
+  } else {
+    var route = routes[dayKey];
+    var html = "";
+    var departTime = dayKey==="7/14" ? "13:30" : (dayKey==="7/17" ? "16:30" : "9:00");
+    html += '<div class="route-item">'
+      + '<span class="route-num school">起</span>'
+      + '<div class="route-info"><div class="addr">'+SCHOOL.name+'</div><div class="name">'+SCHOOL.addr+'</div><div class="time">'+departTime+' 出发</div></div>'
+      + '</div>';
+
+    var seenCoords = {};
+    route.ids.forEach(function(n, idx) {
+      html += '<div class="route-arrow">⬇</div>';
+      var v = visitMap[n];
+      if (!v) return;
+      var key = v.lat.toFixed(5)+","+v.lng.toFixed(5);
+      var isMerged = seenCoords[key];
+      var timeStr = (route.times&&route.times[idx]) ? route.times[idx] : "";
+      var isCoffee = (v.name||"").indexOf("咖啡厅") >= 0;
+      var label = isMerged ? "├" : String(n);
+      var labelClass = isMerged ? "merged" : "";
+
+      var cinfo = (checkins[dayKey] && checkins[dayKey][n]) ? checkins[dayKey][n] : null;
+      var checkTimeHtml = "";
+      var rowClass = "";
+
+      if (cinfo) {
+        var isTimeStr = timeStr && timeStr.indexOf("←") < 0;
+        if (isTimeStr) {
+          var schedMin = parseMin(timeStr);
+          var diff = cinfo.actualMin - schedMin;
+          if (isNaN(diff)) { diff = 0; }
+          if (diff < -5) {
+            checkTimeHtml = '<div class="time"><span class="check-status early">提前 ' + Math.abs(diff) + 'min</span></div>';
+            rowClass = ' checked-early';
+          } else if (diff > 5) {
+            checkTimeHtml = '<div class="time"><span class="check-status late">延后 +' + diff + 'min</span></div>';
+            rowClass = ' checked-late';
+          } else {
+            checkTimeHtml = '<div class="time"><span class="check-status ontime">准时</span></div>';
+            rowClass = ' checked-ontime';
+          }
+        } else {
+          checkTimeHtml = '<div class="time"><span class="check-status ontime">✓ 已打卡</span></div>';
+        }
+      }
+
+      if (!isMerged) {
+        html += '<div class="route-item'+rowClass+'">'
+          + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" data-time="'+timeStr+'" '
+          + (cinfo?' checked':'') + ' title="勾选即记录打卡时间">'
+          + '<span class="route-num '+labelClass+(isCoffee?' school':'')+'">'+label+'</span>'
+          + '<div class="route-info"><div class="addr">'+v.addr+'</div><div class="name">'+v.name+'</div>'
+          + (checkTimeHtml || (timeStr?'<div class="time">⏰ 预计 '+timeStr+'</div>':''))
+          + '</div></div>';
+        seenCoords[key] = true;
+      } else {
+        html += '<div class="route-item'+rowClass+'">'
+          + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" data-time="'+timeStr+'" '
+          + (cinfo?' checked':'') + ' title="勾选即记录打卡时间">'
+          + '<span class="route-num merged">'+n+'</span>'
+          + '<div class="route-info"><div class="addr" style="color:#999">同地址，连续家访</div>'
+          + checkTimeHtml
+          + '</div></div>';
+      }
+    });
+
+    html += '<div class="route-arrow">⬇</div>';
+    html += '<div class="route-item">'
+      + '<span class="route-num school">终</span>'
+      + '<div class="route-info"><div class="addr">返回 '+SCHOOL.name+'</div></div>'
+      + '</div>';
+
+    listEl.innerHTML = html;
+
+    // 绑定 checkbox 事件
+    var cbs = listEl.querySelectorAll(".route-checkbox");
+    for (var ci = 0; ci < cbs.length; ci++) {
+      cbs[ci].addEventListener("change", function() {
+        toggleCheckin(this.dataset.day, parseInt(this.dataset.n), this.dataset.time);
+      });
+    }
+
+    var uniqueSet = {};
+    route.ids.forEach(function(n) {
+      var vv = visitMap[n];
+      if (vv) uniqueSet[vv.lat.toFixed(5)+","+vv.lng.toFixed(5)] = true;
+    });
+    var count = Object.keys(uniqueSet).length;
+    summaryEl.innerHTML = '<b>'+route.ids.length+'</b> 户 · <b>'+count+'</b> 个点位 · 每户约20分钟';
+  }
+
+  updateLegend(dayKey);
+}
+
+// ===== 图例 =====
+function updateLegend(dayKey) {
+  var el = document.getElementById("legend");
+  if (dayKey === "all") {
+    var html = "";
+    for (var d in DAY_COLORS) {
+      html += '<div class="leg-row"><span class="legend-dot" style="background:'+DAY_COLORS[d]+'"></span> '+d+'</div>';
+    }
+    html += '<div class="leg-row"><span class="legend-dot" style="background:'+GRAY_COLOR+'"></span> 待定</div>';
+    html += '<div class="leg-row"><span class="legend-dot" style="background:'+STAR_COLOR+';border:1px solid #e67e22"></span> 学校附近</div>';
+    el.innerHTML = html;
+  } else {
+    var c = getDayColor(dayKey);
+    el.innerHTML = '<div class="leg-row"><span class="legend-dot" style="background:'+c+'"></span> 标记</div>'
+      + '<div class="leg-row"><span style="display:inline-block;width:20px;height:3px;background:'+c+';vertical-align:middle;margin-right:4px;border-radius:2px"></span> 驾车路线</div>'
+      + '<div class="leg-row"><span style="display:inline-block;width:20px;height:3px;background:'+WALK_COLOR+';vertical-align:middle;margin-right:4px;border-radius:2px"></span> 步行路线</div>'
+      + '<div class="leg-row"><span class="legend-dot" style="background:'+STAR_COLOR+';border:1px solid #e67e22"></span> 学校附近</div>';
+  }
+}
+
+// ===== Tab 切换 =====
+function updateActiveTab(dayKey) {
+  var btns = document.querySelectorAll(".tab-bar button");
+  for (var i = 0; i < btns.length; i++) {
+    if (btns[i].dataset.day === dayKey) { btns[i].classList.add("active"); }
+    else { btns[i].classList.remove("active"); }
+  }
+}
+
+document.getElementById("tabBar").addEventListener("click", function(e) {
+  var target = e.target;
+  if (target.tagName === "BUTTON") {
+    showDay(target.dataset.day);
+  }
+});
+
+// ===== 视野 =====
+function fitAll() {
+  var bounds = [];
+  visits.forEach(function(v) {
+    if (v.outOfScope) return;
+    var gcj = wgs2gcj(v.lng, v.lat);
+    bounds.push([gcj.lat, gcj.lng]);
+  });
+  var schoolGcj = wgs2gcj(SCHOOL.lng, SCHOOL.lat);
+  bounds.push([schoolGcj.lat, schoolGcj.lng]);
+  map.fitBounds(L.latLngBounds(bounds).pad(0.12));
+}
+
+// ===== 初始化 =====
+addSchoolMarker();
+showDay("all");
+setTimeout(fitAll, 400);
+</script>
+</body>
+</html>
