@@ -209,7 +209,7 @@ function saveCheckins(data) {
   try { localStorage.setItem(CHECKINS_KEY, JSON.stringify(data)); }
   catch(e) {}
 }
-function toggleCheckin(dayKey, n, scheduledTime) {
+function toggleCheckin(dayKey, n) {
   var all = loadCheckins();
   if (!all[dayKey]) all[dayKey] = {};
   if (all[dayKey][n]) {
@@ -217,7 +217,7 @@ function toggleCheckin(dayKey, n, scheduledTime) {
   } else {
     var now = new Date();
     var hh = now.getHours(), mm = now.getMinutes();
-    all[dayKey][n] = { time: (hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm, actualMin: hh*60+mm };
+    all[dayKey][n] = { time: (hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm };
   }
   saveCheckins(all);
   showDay(currentDay);
@@ -655,46 +655,25 @@ function updatePanel(dayKey, markers) {
       var labelClass = isMerged ? "merged" : "";
 
       var cinfo = (checkins[dayKey] && checkins[dayKey][n]) ? checkins[dayKey][n] : null;
-      var checkTimeHtml = "";
-      var rowClass = "";
-
-      if (cinfo) {
-        var isTimeStr = timeStr && timeStr.indexOf("←") < 0;
-        if (isTimeStr) {
-          var schedMin = parseMin(timeStr);
-          var diff = cinfo.actualMin - schedMin;
-          if (isNaN(diff)) { diff = 0; }
-          if (diff < -5) {
-            checkTimeHtml = '<div class="time"><span class="check-status early">提前 ' + Math.abs(diff) + 'min</span></div>';
-            rowClass = ' checked-early';
-          } else if (diff > 5) {
-            checkTimeHtml = '<div class="time"><span class="check-status late">延后 +' + diff + 'min</span></div>';
-            rowClass = ' checked-late';
-          } else {
-            checkTimeHtml = '<div class="time"><span class="check-status ontime">准时</span></div>';
-            rowClass = ' checked-ontime';
-          }
-        } else {
-          checkTimeHtml = '<div class="time"><span class="check-status ontime">✓ 已打卡</span></div>';
-        }
-      }
+      var checkedHtml = cinfo ? '<div class="time">✅ 已打卡</div>' : '';
 
       if (!isMerged) {
-        html += '<div class="route-item'+rowClass+'">'
-          + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" data-time="'+timeStr+'" '
-          + (cinfo?' checked':'') + ' title="勾选即记录打卡时间">'
+        html += '<div class="route-item">'
+          + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" '
+          + (cinfo?' checked':'') + '>'
           + '<span class="route-num '+labelClass+(isCoffee?' school':'')+'">'+label+'</span>'
           + '<div class="route-info"><div class="addr">'+v.addr+'</div><div class="name">'+v.name+'</div>'
-          + (checkTimeHtml || (timeStr?'<div class="time">⏰ 预计 '+timeStr+'</div>':''))
+          + (timeStr?'<div class="time">⏰ 预计 '+timeStr+'</div>':'')
+          + checkedHtml
           + '</div></div>';
         seenCoords[key] = true;
       } else {
-        html += '<div class="route-item'+rowClass+'">'
-          + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" data-time="'+timeStr+'" '
-          + (cinfo?' checked':'') + ' title="勾选即记录打卡时间">'
+        html += '<div class="route-item">'
+          + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" '
+          + (cinfo?' checked':'') + '>'
           + '<span class="route-num merged">'+n+'</span>'
           + '<div class="route-info"><div class="addr" style="color:#999">同地址，连续家访</div>'
-          + checkTimeHtml
+          + checkedHtml
           + '</div></div>';
       }
     });
@@ -711,7 +690,7 @@ function updatePanel(dayKey, markers) {
     var cbs = listEl.querySelectorAll(".route-checkbox");
     for (var ci = 0; ci < cbs.length; ci++) {
       cbs[ci].addEventListener("change", function() {
-        toggleCheckin(this.dataset.day, parseInt(this.dataset.n), this.dataset.time);
+        toggleCheckin(this.dataset.day, parseInt(this.dataset.n));
       });
     }
 
