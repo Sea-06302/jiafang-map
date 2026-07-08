@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>张江镇及周边 — 家访路线规划</title>
-<link rel="stylesheet" href="leaflet.css">
+<link rel="stylesheet" href="leaflet.css" />
 <script src="leaflet.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -65,40 +65,10 @@
   .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
   .route-segment { cursor: pointer; transition: opacity 0.2s; }
-
-  .panel-toggle {
-    display: none; position: absolute; bottom: 10px; right: 10px; z-index: 1001;
-    width: 40px; height: 40px; border-radius: 50%; border: none;
-    background: rgba(44,62,80,0.9); color: #fff; font-size: 20px; cursor: pointer;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-  }
-
-  @media (max-width: 768px) {
-    .tab-bar { top: 6px; padding: 4px; gap: 2px; border-radius: 8px; overflow-x: auto; max-width: 98vw; }
-    .tab-bar button { font-size: 11px; padding: 6px 8px; flex-shrink: 0; }
-    .info-panel {
-      top: auto; bottom: 0; right: 0; left: 0; max-width: 100%; min-width: 0;
-      max-height: 40vh; border-radius: 12px 12px 0 0; padding: 10px 12px;
-      font-size: 12px; transition: max-height 0.3s, padding 0.3s;
-    }
-    .info-panel.collapsed { max-height: 36px; padding-top: 6px; padding-bottom: 6px; overflow: hidden; }
-    .info-panel.collapsed h3 { margin-bottom: 0; }
-    .info-panel.collapsed .subtitle,
-    .info-panel.collapsed .route-list,
-    .info-panel.collapsed .summary-row,
-    .info-panel.collapsed .legend-mini { display: none; }
-    .info-panel h3 { font-size: 14px; cursor: pointer; }
-    .info-panel .subtitle { margin-bottom: 6px; }
-    .route-item { padding: 3px 0; font-size: 11px; gap: 6px; }
-    .route-num { min-width: 18px; height: 18px; font-size: 10px; }
-    .route-arrow { font-size: 14px; margin: 1px 0 1px 9px; }
-    .route-info .time { font-size: 10px; }
-    .panel-toggle { display: block; bottom: 42vh; }
-  }
+</style>
 </head>
 <body>
 <div id="map"></div>
-<button class="panel-toggle" id="panelToggle" title="显示/隐藏列表">☰</button>
 
 <div class="tab-bar" id="tabBar">
   <button data-day="all" class="active">全部</button>
@@ -239,7 +209,7 @@ function saveCheckins(data) {
   try { localStorage.setItem(CHECKINS_KEY, JSON.stringify(data)); }
   catch(e) {}
 }
-function toggleCheckin(dayKey, n) {
+function toggleCheckin(dayKey, n, scheduledTime) {
   var all = loadCheckins();
   if (!all[dayKey]) all[dayKey] = {};
   if (all[dayKey][n]) {
@@ -247,7 +217,7 @@ function toggleCheckin(dayKey, n) {
   } else {
     var now = new Date();
     var hh = now.getHours(), mm = now.getMinutes();
-    all[dayKey][n] = { time: (hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm };
+    all[dayKey][n] = { time: (hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm, actualMin: hh*60+mm };
   }
   saveCheckins(all);
   showDay(currentDay);
@@ -685,24 +655,46 @@ function updatePanel(dayKey, markers) {
       var labelClass = isMerged ? "merged" : "";
 
       var cinfo = (checkins[dayKey] && checkins[dayKey][n]) ? checkins[dayKey][n] : null;
-      var timeOrDoneHtml = cinfo ? '<div class="time">已完成</div>' : (timeStr?'<div class="time">⏰ 预计 '+timeStr+'</div>':'');
+      var checkTimeHtml = "";
+      var rowClass = "";
+
+      if (cinfo) {
+        var isTimeStr = timeStr && timeStr.indexOf("←") < 0;
+        if (isTimeStr) {
+          var schedMin = parseMin(timeStr);
+          var diff = cinfo.actualMin - schedMin;
+          if (isNaN(diff)) { diff = 0; }
+          if (diff < -5) {
+            checkTimeHtml = '<div class="time"><span class="check-status early">提前 ' + Math.abs(diff) + 'min</span></div>';
+            rowClass = ' checked-early';
+          } else if (diff > 5) {
+            checkTimeHtml = '<div class="time"><span class="check-status late">延后 +' + diff + 'min</span></div>';
+            rowClass = ' checked-late';
+          } else {
+            checkTimeHtml = '<div class="time"><span class="check-status ontime">准时</span></div>';
+            rowClass = ' checked-ontime';
+          }
+        } else {
+          checkTimeHtml = '<div class="time"><span class="check-status ontime">✓ 已打卡</span></div>';
+        }
+      }
 
       if (!isMerged) {
-        html += '<div class="route-item">'
-          + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" '
-          + (cinfo?' checked':'') + '>'
+        html += '<div class="route-item'+rowClass+'">'
+          + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" data-time="'+timeStr+'" '
+          + (cinfo?' checked':'') + ' title="勾选即记录打卡时间">'
           + '<span class="route-num '+labelClass+(isCoffee?' school':'')+'">'+label+'</span>'
           + '<div class="route-info"><div class="addr">'+v.addr+'</div><div class="name">'+v.name+'</div>'
-          + timeOrDoneHtml
+          + (checkTimeHtml || (timeStr?'<div class="time">⏰ 预计 '+timeStr+'</div>':''))
           + '</div></div>';
         seenCoords[key] = true;
       } else {
-        html += '<div class="route-item">'
-          + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" '
-          + (cinfo?' checked':'') + '>'
+        html += '<div class="route-item'+rowClass+'">'
+          + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" data-time="'+timeStr+'" '
+          + (cinfo?' checked':'') + ' title="勾选即记录打卡时间">'
           + '<span class="route-num merged">'+n+'</span>'
           + '<div class="route-info"><div class="addr" style="color:#999">同地址，连续家访</div>'
-          + (cinfo?'<div class="time">已完成</div>':'')
+          + checkTimeHtml
           + '</div></div>';
       }
     });
@@ -719,7 +711,7 @@ function updatePanel(dayKey, markers) {
     var cbs = listEl.querySelectorAll(".route-checkbox");
     for (var ci = 0; ci < cbs.length; ci++) {
       cbs[ci].addEventListener("change", function() {
-        toggleCheckin(this.dataset.day, parseInt(this.dataset.n));
+        toggleCheckin(this.dataset.day, parseInt(this.dataset.n), this.dataset.time);
       });
     }
 
@@ -783,20 +775,6 @@ function fitAll() {
   bounds.push([schoolGcj.lat, schoolGcj.lng]);
   map.fitBounds(L.latLngBounds(bounds).pad(0.12));
 }
-
-// ===== 手机面板折叠 =====
-var panelToggle = document.getElementById("panelToggle");
-var infoPanel = document.getElementById("infoPanel");
-panelToggle.addEventListener("click", function() {
-  infoPanel.classList.toggle("collapsed");
-  if (infoPanel.classList.contains("collapsed")) {
-    this.textContent = "☰";
-    this.style.bottom = "10px";
-  } else {
-    this.textContent = "✕";
-    this.style.bottom = "42vh";
-  }
-});
 
 // ===== 初始化 =====
 addSchoolMarker();
