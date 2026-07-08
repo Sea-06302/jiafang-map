@@ -162,14 +162,14 @@ var visits = [
   { n:8,  addr:"罗山路2255弄",       name:"汤臣湖庭花园",      lat:31.2105, lng:121.5880 },
   { n:9,  addr:"张江镇龙东大道2255弄", name:"龙东花园",        lat:31.2120, lng:121.6085 },
   { n:11, addr:"桃林路299弄",        name:"尚海郦景",          lat:31.2350, lng:121.5450 },
-  { n:12, addr:"川河路333弄",        name:"万科翡翠公园六期",  lat:31.2025, lng:121.6090 },
+  { n:12, addr:"川和路333弄",        name:"万科翡翠公园六期",  lat:31.2025, lng:121.6090 },
   { n:13, addr:"金桥路3379弄",       name:"三桥小区",          lat:31.2475, lng:121.6020 },
   { n:14, addr:"杨镇路76弄",         name:"杨镇新村",          lat:31.2210, lng:121.5895 },
   { n:16, addr:"罗山路2255弄",       name:"汤臣湖庭花园",      lat:31.2105, lng:121.5880 },
   { n:17, addr:"中科路2660弄",       name:"川杨新苑四期",      lat:31.1960, lng:121.6130 },
   { n:18, addr:"张江镇龙三路166弄",  name:"杨镇新村/龙三小区", lat:31.2197, lng:121.5915 },
   { n:19, addr:"学校附近咖啡厅",     name:"复旦附属浦东实验(咖啡厅)", lat:31.2350, lng:121.5950 },
-  { n:20, addr:"川河路388弄",        name:"万科翡翠公园四期",  lat:31.2030, lng:121.6110 },
+  { n:20, addr:"川和路388弄",        name:"万科翡翠公园四期",  lat:31.2030, lng:121.6110 },
   { n:21, addr:"孙农路397弄",        name:"中建朗阅府",        lat:31.1850, lng:121.6200 },
   { n:22, addr:"张江镇龙三路166弄",  name:"杨镇新村/龙三小区", lat:31.2197, lng:121.5915 },
   { n:23, addr:"学校附近咖啡厅",     name:"咖啡厅见面（与#19合并）", lat:31.2350, lng:121.5950 },
@@ -198,7 +198,7 @@ var routes = {
     times:["9:18","9:53","10:38"]
   },
   "7/17": {
-    label:"7月17日 星期五", sub:"3户 · 9:00起 · 三林→张江南→金葵路",
+    label:"7月17日 星期五", sub:"3户 · 17:00起 · 三林→张江南→金葵路",
     ids:[7, 20, 28],
     times:["17:00","18:00","19:00"]
   },
@@ -532,7 +532,7 @@ function fetchRealRoutes(points, pointLabels, routeColor, dayKey) {
 
 function recalcAndUpdate(dayKey, allSegments) {
   var route = routes[dayKey];
-  var departStr = dayKey==="7/14" ? "13:00" : "9:00";
+  var departStr = dayKey==="7/14" ? "13:00" : (dayKey==="7/17" ? "17:00" : "9:00");
   var currentMin = parseMin(departStr);
   var prevCoordKey = null;
   var isFirst = true;
@@ -582,6 +582,7 @@ function recalcAndUpdate(dayKey, allSegments) {
   route.ids.forEach(function(n, idx) {
     if (n === 9 && newTimes[idx] && newTimes[idx].indexOf("←") < 0) newTimes[idx] = "16:00";
     if (n === 20 && newTimes[idx] && newTimes[idx].indexOf("←") < 0) newTimes[idx] = "18:00";
+    if (n === 28 && newTimes[idx] && newTimes[idx].indexOf("←") < 0) newTimes[idx] = "19:00";
   });
 
   route.times = newTimes;
@@ -715,7 +716,7 @@ function updatePanel(dayKey, markers) {
           + (cinfo?' checked':'') + '>'
           + '<span class="route-num merged"'+segAttr3+'>'+n+'</span>'
           + '<div class="route-info"><div class="addr" style="color:#999">同地址，连续家访</div>'
-          + (cinfo?'<div class="time">已完成</div>':'')
+          + timeOrDoneHtml
           + '</div></div>';
       }
     });
