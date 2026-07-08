@@ -341,7 +341,9 @@ function showDay(dayKey) {
   var routeColor = dayKey === "all" ? "#e74c3c" : getDayColor(dayKey);
   var markerCoords = [];
 
+  var segIdx = -1;
   allMarkers.forEach(function(g) {
+    segIdx++;
     var gcj = wgs2gcj(g.lng, g.lat);
     markerCoords.push({ lat:gcj.lat, lng:gcj.lng, nums:g.nums, name:g.name, addr:g.addr });
     var label = g.nums.join("&");
@@ -364,18 +366,26 @@ function showDay(dayKey) {
         html:'<div style="display:flex;align-items:center;white-space:nowrap"><svg width="28" height="28" viewBox="0 0 28 28"><polygon points="14,1 19,10 29,11 22,17 24,27 14,21 4,27 6,17 -1,11 9,10" fill="'+STAR_COLOR+'" stroke="#e67e22" stroke-width="1"/><text x="14" y="17" text-anchor="middle" font-size="9" font-weight="bold" fill="#333">校</text></svg><span style="font-size:12px;font-weight:bold;color:#333;background:#fff3cd;padding:2px 6px;border-radius:3px;margin-left:3px;line-height:1.3;box-shadow:0 1px 3px rgba(0,0,0,0.2);border:1px solid '+STAR_COLOR+'">'+label+'</span></div>',
         iconSize:[28+label.length*7.5+14,28], iconAnchor:[14,26], popupAnchor:[label.length*3.5,-28]
       });
-      L.marker([gcj.lat, gcj.lng], { icon:icon, zIndexOffset:1000 })
-        .bindPopup('<b>⭐ '+g.name+'</b><br><small>'+g.addr+'</small>')
-        .addTo(markerLayer);
+      var mk = L.marker([gcj.lat, gcj.lng], { icon:icon, zIndexOffset:1000 });
+      if (dayKey !== "all") {
+        (function(si) { mk.on("click", function() { highlightSegment(si); }); })(segIdx);
+      } else {
+        mk.bindPopup('<b>⭐ '+g.name+'</b><br><small>'+g.addr+'</small>');
+      }
+      mk.addTo(markerLayer);
     } else {
       var iconW = 22 + label.length * 7.5 + 14;
       var icon = L.divIcon({
         html:'<div style="display:flex;align-items:center;white-space:nowrap"><svg width="22" height="32" viewBox="0 0 22 32"><path d="M11 0C4.9 0 0 4.9 0 11c0 8.2 11 21 11 21s11-12.8 11-21C22 4.9 17.1 0 11 0z" fill="'+color+'" stroke="#fff" stroke-width="1.2"/></svg><span style="font-size:12px;font-weight:bold;color:#fff;background:'+color+';padding:2px 6px;border-radius:3px;margin-left:2px;line-height:1.3;box-shadow:0 1px 3px rgba(0,0,0,0.3)">'+label+'</span></div>',
         iconSize:[iconW,32], iconAnchor:[11,32], popupAnchor:[iconW/2-11,-34]
       });
-      L.marker([gcj.lat, gcj.lng], { icon:icon })
-        .bindPopup('<b>'+g.name+'</b><br><small>'+g.addr+'</small>')
-        .addTo(markerLayer);
+      var mk = L.marker([gcj.lat, gcj.lng], { icon:icon });
+      if (dayKey !== "all") {
+        (function(si) { mk.on("click", function() { highlightSegment(si); }); })(segIdx);
+      } else {
+        mk.bindPopup('<b>'+g.name+'</b><br><small>'+g.addr+'</small>');
+      }
+      mk.addTo(markerLayer);
     }
   });
 
