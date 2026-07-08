@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -205,7 +205,7 @@ var routes = {
   "7/18": {
     label:"7月18日 星期六", sub:"10户+咖啡 · 9:00-17:28 · 仅限周六 · 银柳→龙三→罗山→香楠→孙桥→龙东→咖啡厅",
     ids:[3, 6, 18, 22, 16, 24, 1, 21, 25, 9, 19, 23],
-    times:["9:15","9:50","←同地址","←同地址","10:25","11:00","11:35","13:00","13:45","16:00","17:08","←咖啡厅合并"]
+    times:["9:15","9:50","10:10","10:30","10:50","11:25","12:00","13:00","13:45","16:00","17:08","17:28"]
   }
 };
 
@@ -554,8 +554,8 @@ function recalcAndUpdate(dayKey, allSegments) {
     var coordKey = v.lat.toFixed(5)+","+v.lng.toFixed(5);
 
     if (coordKey === prevCoordKey) {
-      var isCoffee = (v.name||"").indexOf("咖啡厅") >= 0;
-      newTimes.push(isCoffee ? "←咖啡厅合并" : "←同地址");
+      newTimes.push(fmtMin(currentMin));
+      currentMin += 20;
     } else if (isFirst) {
       newTimes.push(departStr);
       currentMin = parseMin(departStr) + 20;
