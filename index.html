@@ -655,7 +655,7 @@ function updatePanel(dayKey, markers) {
       var labelClass = isMerged ? "merged" : "";
 
       var cinfo = (checkins[dayKey] && checkins[dayKey][n]) ? checkins[dayKey][n] : null;
-      var checkedHtml = cinfo ? '<div class="time">✅ 已打卡</div>' : '';
+      var timeOrDoneHtml = cinfo ? '<div class="time">已完成</div>' : (timeStr?'<div class="time">⏰ 预计 '+timeStr+'</div>':'');
 
       if (!isMerged) {
         html += '<div class="route-item">'
@@ -663,8 +663,7 @@ function updatePanel(dayKey, markers) {
           + (cinfo?' checked':'') + '>'
           + '<span class="route-num '+labelClass+(isCoffee?' school':'')+'">'+label+'</span>'
           + '<div class="route-info"><div class="addr">'+v.addr+'</div><div class="name">'+v.name+'</div>'
-          + (timeStr?'<div class="time">⏰ 预计 '+timeStr+'</div>':'')
-          + checkedHtml
+          + timeOrDoneHtml
           + '</div></div>';
         seenCoords[key] = true;
       } else {
@@ -673,7 +672,7 @@ function updatePanel(dayKey, markers) {
           + (cinfo?' checked':'') + '>'
           + '<span class="route-num merged">'+n+'</span>'
           + '<div class="route-info"><div class="addr" style="color:#999">同地址，连续家访</div>'
-          + checkedHtml
+          + (cinfo?'<div class="time">已完成</div>':'')
           + '</div></div>';
       }
     });
