@@ -688,7 +688,7 @@ function updatePanel(dayKey, markers) {
         html += '<div class="route-item">'
           + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" '
           + (cinfo?' checked':'') + '>'
-          + '<span class="route-num '+labelClass+(isCoffee?' school':'')+'" data-seg="'+segIdx+'">'+label+'</span>'
+          + '<span class="route-num '+labelClass+(isCoffee?' school':'')+'" data-seg="'+segIdx+'" onclick="highlightSegment('+segIdx+')">'+label+'</span>'
           + '<div class="route-info"><div class="addr">'+v.addr+'</div><div class="name">'+v.name+'</div>'
           + timeOrDoneHtml
           + '</div></div>';
@@ -697,7 +697,7 @@ function updatePanel(dayKey, markers) {
         html += '<div class="route-item">'
           + '<input type="checkbox" class="route-checkbox" data-day="'+dayKey+'" data-n="'+n+'" '
           + (cinfo?' checked':'') + '>'
-          + '<span class="route-num merged" data-seg="'+segIdx+'">'+n+'</span>'
+          + '<span class="route-num merged" data-seg="'+segIdx+'" onclick="highlightSegment('+segIdx+')">'+n+'</span>'
           + '<div class="route-info"><div class="addr" style="color:#999">同地址，连续家访</div>'
           + (cinfo?'<div class="time">已完成</div>':'')
           + '</div></div>';
